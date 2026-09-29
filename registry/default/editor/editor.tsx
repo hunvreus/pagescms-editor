@@ -353,6 +353,11 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
   }),
 ];
 
+function markdownImageDestination(value: string) {
+  const encoded = encodeURI(value).replace(/%25([0-9A-Fa-f]{2})/g, "%$1");
+  return /[()]/.test(encoded) ? `<${encoded}>` : encoded;
+}
+
 const UploadableImage = Image.extend({
   addAttributes() {
     return {
@@ -376,6 +381,23 @@ const UploadableImage = Image.extend({
           attributes.uploadError ? { "data-upload-error": attributes.uploadError } : {},
       },
     };
+  },
+
+  parseMarkdown(token, helpers) {
+    return helpers.createNode("image", {
+      src: token["href"],
+      title: token["title"],
+      alt: token.text,
+    });
+  },
+
+  renderMarkdown(node) {
+    const attrs = toUploadableAttrs(node.attrs);
+    const src = markdownImageDestination(String(attrs.src ?? ""));
+    const alt = String(attrs.alt ?? "");
+    const title = String(attrs.title ?? "");
+
+    return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
   },
 });
 
@@ -636,7 +658,6 @@ export function Editor({
             ? "Press '/' for commands"
             : "",
         showOnlyCurrent: true,
-        includeChildren: true,
       }),
       Markdown,
       SlashCommands.configure({

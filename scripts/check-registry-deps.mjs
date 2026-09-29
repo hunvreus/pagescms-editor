@@ -37,11 +37,16 @@ const walk = (dir) => {
 
 const toPackageName = (specifier) => {
   if (specifier.startsWith("@")) {
-    const parts = specifier.split("/");
+    const versionAt = specifier.lastIndexOf("@");
+    const packageSpecifier =
+      versionAt > specifier.indexOf("/") ? specifier.slice(0, versionAt) : specifier;
+    const parts = packageSpecifier.split("/");
     return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : specifier;
   }
-  return specifier.split("/")[0];
+  return specifier.split("@")[0].split("/")[0];
 };
+
+const registryDeclaredPackages = new Set(Array.from(registryDeclared, toPackageName));
 
 const isPackageImport = (specifier) =>
   !!specifier &&
@@ -78,7 +83,7 @@ for (const file of sourceFiles) {
       if (!missingInPackage.has(packageName)) missingInPackage.set(packageName, new Set());
       missingInPackage.get(packageName).add(specifier);
     }
-    if (!registryDeclared.has(packageName)) {
+    if (!registryDeclaredPackages.has(packageName)) {
       if (!missingInRegistryManifest.has(packageName)) {
         missingInRegistryManifest.set(packageName, new Set());
       }
@@ -111,7 +116,8 @@ if (!registryItem) {
   process.exit(1);
 }
 
-for (const pkg of registryDeclared) {
+for (const dependency of registryDeclared) {
+  const pkg = toPackageName(dependency);
   if (!declared.has(pkg)) {
     console.error(`Registry dependency check failed. "${pkg}" is in registry.json but missing from package.json dependencies.`);
     process.exit(1);
