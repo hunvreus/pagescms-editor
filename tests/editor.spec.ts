@@ -41,3 +41,14 @@ test("shows a placeholder only on the active empty paragraph", async ({ page }) 
     editor.locator('.is-empty[data-placeholder="Press \'/\' for commands"]'),
   ).toHaveCount(1);
 });
+
+test("opens slash commands without rolling back typed input", async ({ page }) => {
+  await page.goto("/");
+
+  const editor = page.locator(".ProseMirror");
+  await editor.press("Enter");
+  await editor.pressSequentially("/Image");
+
+  await expect(page.getByRole("button", { name: "Image", exact: true })).toBeVisible();
+  await expect(editor).toContainText("/Image");
+});

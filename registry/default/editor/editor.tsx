@@ -614,7 +614,11 @@ export function Editor({
   const [imageAltText, setImageAltText] = useState("");
   const bubbleMenuRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const lastEmittedValueRef = useRef<string>(value);
+  const lastEmittedValueRef = useRef<string>(
+    format === "markdown" ? normalizeMarkdown(value) : value,
+  );
+  const lastObservedFormatRef = useRef<EditorFormat>(format);
+  const lastObservedValueRef = useRef<string>(lastEmittedValueRef.current);
   const pendingUploadsRef = useRef(0);
   const objectUrlByUploadIdRef = useRef(new Map<string, string>());
   const expectedBlobByUploadIdRef = useRef(new Map<string, string>());
@@ -714,6 +718,7 @@ export function Editor({
               .replace(/\sdata-upload-id="[^"]*"/g, "")
               .replace(/\sdata-uploading="[^"]*"/g, "")
               .replace(/\sdata-upload-error="[^"]*"/g, "");
+      if (nextValue === lastEmittedValueRef.current) return;
       lastEmittedValueRef.current = nextValue;
       onChange(nextValue);
     },
@@ -756,18 +761,24 @@ export function Editor({
 
   useEffect(() => {
     if (!editor) return;
-    if (value === lastEmittedValueRef.current) return;
+    const externalValue = format === "markdown" ? normalizeMarkdown(value) : value;
+    const formatChanged = lastObservedFormatRef.current !== format;
+    const valueChanged = lastObservedValueRef.current !== externalValue;
+    if (!formatChanged && !valueChanged) return;
+
+    lastObservedFormatRef.current = format;
+    lastObservedValueRef.current = externalValue;
+    if (!formatChanged && externalValue === lastEmittedValueRef.current) return;
 
     const current = format === "markdown" ? normalizeMarkdown(editor.getMarkdown()) : editor.getHTML();
-    const hasChanged =
-      format === "markdown" ? value.trimEnd() !== current.trimEnd() : value !== current;
+    const hasChanged = externalValue !== current;
 
     if (hasChanged) {
       editor.commands.setContent(value || (format === "markdown" ? "" : "<p></p>"), {
         emitUpdate: false,
         contentType: format,
       });
-      lastEmittedValueRef.current = value;
+      lastEmittedValueRef.current = externalValue;
     }
   }, [editor, value, format]);
 
