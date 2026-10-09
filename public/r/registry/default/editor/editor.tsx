@@ -208,7 +208,7 @@ export function Editor({
 
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(!disabled);
+    editor.setEditable(!disabled, false);
   }, [editor, disabled]);
 
   useEffect(() => {

@@ -52,3 +52,23 @@ test("opens slash commands without rolling back typed input", async ({ page }) =
   await expect(page.getByRole("button", { name: "Image", exact: true })).toBeVisible();
   await expect(editor).toContainText("/Image");
 });
+
+
+test("does not emit content changes when mounting or remounting the editor", async ({ page }) => {
+  const original = "![Photo](</photo.png>)\n\nUntouched\n";
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Source" }).click();
+  await page.getByRole("textbox").fill(original);
+  await page.getByRole("tab", { name: "Editor" }).click();
+  await expect(page.locator(".ProseMirror img")).toHaveCount(1);
+  await page.getByRole("tab", { name: "Source" }).click();
+  await expect(page.getByRole("textbox")).toHaveValue(original);
+  await page.getByRole("tab", { name: "Editor" }).click();
+  await expect(page.locator(".ProseMirror img")).toHaveCount(1);
+  await page.getByRole("tab", { name: "Source" }).click();
+  await expect(page.getByRole("textbox")).toHaveValue(original);
+  await page.getByRole("tab", { name: "Editor" }).click();
+  await page.locator(".ProseMirror").fill("An actual edit");
+  await page.getByRole("tab", { name: "Source" }).click();
+  await expect(page.getByRole("textbox")).toHaveValue(/An actual edit/);
+});

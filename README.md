@@ -5,6 +5,8 @@
 - Slash commands
 - Links, images (including ALT editing), and tables
 
+Mounting the editor or changing `disabled` does not emit `onChange`; content changes do.
+
 Component export:
 - `Editor` from `src/components/ui/editor.tsx`
 
