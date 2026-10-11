@@ -1,8 +1,10 @@
 import { ReactRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
-import tippy, { type Instance as TippyInstance } from "tippy.js";
-import CommandsList, { type CommandsListHandle, type SlashItem } from "./commands-list";
-import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
+import tippy from "tippy.js";
+import type { Instance as TippyInstance } from "tippy.js";
+import CommandsList from "./commands-list";
+import type { CommandsListHandle, SlashItem } from "./commands-list";
+import { Code, FileText, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
 import type { SuggestionOptions as TiptapSuggestionOptions } from "@tiptap/suggestion";
 
 export type ImagePickerUrlResult = {
@@ -32,7 +34,15 @@ export type ImagePickerHandler = (
 
 export type SlashImageFallback = "prompt-url" | "none";
 
+export type EditorSnippet = {
+  label: string;
+  source: string;
+  format?: "html" | "markdown";
+};
+
 type SuggestionOptions = {
+  getSnippets?: () => readonly EditorSnippet[];
+  onInsertSnippet?: ((context: ImagePickerContext, snippet: EditorSnippet) => void) | null;
   onRequestImage?: ImagePickerHandler | null;
   onInsertLocalImageFile?: ((context: ImagePickerContext & Omit<ImagePickerFileResult, "kind">) => void | Promise<void>) | null;
   enableImages?: boolean;
@@ -161,11 +171,16 @@ type SuggestionKeyDownProps = Parameters<NonNullable<SuggestionRenderLifecycle["
 const createSuggestion = (options: SuggestionOptions = {}): SlashSuggestion => ({
   items: ({ query, editor }: { query: string; editor: Editor }) => {
     const isInTableCell = editor.isActive("tableCell") || editor.isActive("tableHeader");
-    return getAllItems(options)
+    const snippets: SlashItem[] = (options.getSnippets?.() ?? []).map(snippet => ({
+      title: snippet.label,
+      icon: FileText,
+      command: context => options.onInsertSnippet?.(context, snippet),
+    }));
+    const commands = getAllItems(options)
       .filter((item) => !isInTableCell || TABLE_SAFE_COMMANDS.has(item.title))
-      .filter((item) => options.enableImages !== false || item.title !== "Image")
-      .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
-      .slice(0, 10);
+      .filter((item) => options.enableImages !== false || item.title !== "Image");
+    return [...commands, ...(!isInTableCell ? snippets : [])]
+      .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
   },
 
   render: (): SuggestionRenderLifecycle => {

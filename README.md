@@ -115,11 +115,22 @@ Notes:
 
 Precedence is `drop`, then `strip`, then `keep`, then normal Tiptap parsing.
 Rules apply to nested elements as well as roots. Scripts, event handlers, inline
-styles, unsafe URLs, frames, active SVG/MathML, and form controls remain forbidden,
+styles, unsafe URLs, frames, MathML, and form controls remain forbidden,
 including when explicitly matched by `keep`. HTML source, clipboard input, rendered
 fragments, and edited fragment output are sanitized with DOMPurify. Source mode
 remains a source editor: switching modes alone does not rewrite the stored value;
 policy-filtered output is emitted when editing the visual editor.
+
+Controlled values may arrive asynchronously: acknowledgments of earlier emitted
+edits do not replace newer typing. Explicit external replacements still reload
+the editor content.
+
+Static SVG icons are supported by default in HTML and Markdown, without an extra
+option or `keep` selector. Drawing elements and SVG attributes such as `viewBox`,
+`fill`, and `stroke` survive. Scripts, events, embedded HTML, animation, links,
+external resources, and unsupported SVG elements are removed even with permissive
+attribute configuration. Icons are rendered fragments with double-click source
+editing. SVG support is for static artwork, not interactive SVG applications.
 
 In Markdown, retained containers serialize their entire contents as HTML. Markdown
 inside an explicitly kept container is parsed into supported editor content; output
@@ -247,3 +258,7 @@ not overwrite the CMS editor entry or its local integration changes.
 Install the test browsers with `npx playwright install chromium firefox webkit`, then run `npm test`. The suite runs against Chromium, Firefox, and WebKit. To run one browser, use `npm test -- --project=chromium`.
 
 HTML policy tests cover both HTML and Markdown output, repeated edit/reopen cycles, nested content, selector precedence, attribute filtering, clipboard input, malformed markup, source editing and undo, and malicious HTML. The strict consumer check is `npm run fixture:strict`.
+
+### Snippets
+
+Pass `snippets={[{ label: "Alert", source: '<div class="alert"><h2>Heads up!</h2><section>Your message.</section></div>' }]}` to the editor. Snippets appear in the slash menu and can be searched by label. Their source is parsed, rather than inserted as escaped text, using the field format by default; optional `format: "html" | "markdown"` overrides the input format. Output still uses the editor format. HTML policy and sanitization apply as usual: a snippet does not implicitly keep its wrappers. Insertion replaces the slash query and can be undone. Snippets are unavailable inside table cells.

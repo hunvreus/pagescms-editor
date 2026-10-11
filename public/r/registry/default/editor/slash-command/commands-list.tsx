@@ -26,7 +26,7 @@ const CommandsList = forwardRef<CommandsListHandle, CommandsListProps>(({ items,
   }, [items]);
 
   const selectItem = (index: number) => {
-    const item = items[index];
+    const item = items.at(index);
     if (item) command(item);
   };
 
@@ -57,11 +57,11 @@ const CommandsList = forwardRef<CommandsListHandle, CommandsListProps>(({ items,
   }));
 
   return (
-    <div className="bg-popover text-popover-foreground border-border z-50 min-w-44 overflow-hidden rounded-md border p-1 shadow-md">
+    <div className="bg-popover text-popover-foreground border-border z-50 max-h-80 min-w-44 overflow-y-auto rounded-md border p-1 shadow-md">
       {items.length ? (
         items.map((item, index) => (
           <button
-            key={item.title}
+            key={`${index}:${item.title}`}
             type="button"
             onClick={() => selectItem(index)}
             aria-selected={selectedIndex === index}

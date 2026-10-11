@@ -319,13 +319,13 @@ const attacks = [
 for (const [index, payload] of attacks.entries()) {
   test(`attack corpus ${index + 1}: loading, editing and reparsing never activates unsafe HTML`, async ({page}) => {
     const editor = await load(page, `<div class="callout"><p>Safe</p>${payload}</div>\n\nTail`);
-    await expect(editor.locator('script,svg,math,iframe,object,embed,base,meta,style,[onerror],[is],[style]')).toHaveCount(0);
+    await expect(editor.locator('script,math,iframe,object,embed,base,meta,style,[onerror],[onload],[is],[style],svg a')).toHaveCount(0);
     await expect(editor.locator('[data-editor-html-source]')).toHaveCount(0);
     await editor.locator('p').last().click();
     await page.keyboard.press('End');
     await page.keyboard.type(' edited');
     const saved = await output(page);
-    expect(saved).not.toMatch(/javascript:|onerror=|<svg|<math|<iframe|<object|<embed|<base|<meta|<style|data-editor-html-source|\sis=/i);
+    expect(saved).not.toMatch(/javascript:|onerror=|<math|<iframe|<object|<embed|<base|<meta|<style|data-editor-html-source|\sis=/i);
     await page.getByRole('tab', {name:'Editor'}).click();
     expect(await page.evaluate(() => (window as unknown as {attack?:number}).attack)).toBeUndefined();
   });
@@ -471,5 +471,124 @@ for (const format of ['html','markdown'] as const) {
     await page.keyboard.up('Shift');
     await expect(editor.locator('div.callout')).toHaveCount(0);
     await expect(editor).toContainText('<div class="callout"><p>Plain</p></div>');
+  });
+}
+
+for (const format of ['html', 'markdown']) {
+  test(`Basecoat alert wrappers survive ${format} editing and reparsing`, async ({ page }) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByRole('combobox', { name: 'Format' }).selectOption(format);
+    const policy = page.getByRole('textbox', { name: 'Policy', exact: true });
+    await policy.fill(JSON.stringify({keep: ['div.alert', 'div.alert section', 'div.alert footer'], attributes:['data-variant']}));
+    await policy.blur();
+    const input = page.getByRole('textbox', { name: 'Content', exact: true });
+    await input.fill('<div class="alert"><svg class="lucide lucide-info" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg><h2>Heads up!</h2><section>You can add components and dependencies to your app.</section><footer><a href="/enable" class="btn" data-variant="outline">Enable</a></footer></div>');
+    const editor = page.locator('.ProseMirror');
+    await expect(editor.locator('div.alert > h2')).toHaveText('Heads up!');
+    await expect(editor.locator('div.alert > section > p')).toHaveText('You can add components and dependencies to your app.');
+    await expect(editor.locator('div.alert > footer > a.btn')).toHaveAttribute('href', '/enable');
+    await expect(editor.locator('div.alert > svg')).toHaveCount(1);
+    await expect(editor.locator('svg')).toHaveAttribute('viewBox', '0 0 24 24');
+    await expect(editor.locator('svg path').first()).toHaveAttribute('d', 'M12 16v-4');
+    await expect(editor.locator('svg path').last()).toHaveAttribute('d', 'M12 8h.01');
+    await expect(editor.locator('svg')).toHaveAttribute('stroke-linecap', 'round');
+    await expect(editor.locator('svg')).toHaveAttribute('stroke-linejoin', 'round');
+    await expect(editor.locator('footer a')).toHaveAttribute('data-variant', 'outline');
+    await editor.locator('h2').click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+    await page.keyboard.type(' edited');
+    const saved = await input.inputValue();
+    expect(saved).toContain('<section><p>You can add components and dependencies to your app.</p></section>');
+    expect(saved).toContain('<footer><a href="/enable" class="btn" data-variant="outline">Enable</a></footer>');
+    expect(saved).toContain('<svg');
+    await input.fill('Temporary');
+    await input.fill(saved);
+    await expect(editor.locator('div.alert > h2')).toHaveText('Heads up! edited');
+    await expect(editor.locator('div.alert > section > p')).toHaveCount(1);
+    await expect(editor.locator('div.alert > footer > a.btn')).toHaveCount(1);
+  });
+}
+
+for (const format of ['html', 'markdown']) {
+  test(`static SVG is safe on load paste and source editing in ${format}`, async ({ page }) => {
+    await page.addInitScript(() => { (window as unknown as {attacked: number}).attacked = 0; });
+    await page.goto('/tests/html-policy.html');
+    await page.getByRole('combobox', {name: 'Format'}).selectOption(format);
+    const policy = page.getByRole('textbox', {name:'Policy',exact:true});
+    await policy.fill(JSON.stringify({keep:['*'],attributes:['onload','onclick','href','xlink:href','style','srcdoc','fill','stroke-width']}));
+    await policy.blur();
+    const input = page.getByRole('textbox', {name: 'Content', exact: true});
+    const payload = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="window.attacked++"><script>window.attacked++</script><foreignObject><img src="/missing" onerror="window.attacked++"/></foreignObject><a href="javascript:window.attacked++"><text>bad link</text></a><use href="https://example.com/attack.svg#x"/><image href="https://example.com/attack.svg"/><animate attributeName="href" values="javascript:window.attacked++"/><set attributeName="onload" to="window.attacked++"/><path d="M12 16v-4" stroke="currentColor" fill="url(https://example.com/leak)" stroke-width="u&#92;72l(https://example.com/escaped)" onclick="window.attacked++"/><circle cx="12" cy="12" r="10" fill="none"/></svg>';
+    const requests: string[] = [];
+    page.on('request', request => { if(request.url().startsWith('https://example.com/')) requests.push(request.url()); });
+    const editor = page.locator('.ProseMirror');
+    const check = async () => {
+      await expect(editor.locator('svg')).toHaveCount(1);
+      await expect(editor.locator('svg path')).toHaveAttribute('d', 'M12 16v-4');
+      await expect(editor.locator('svg circle')).toHaveAttribute('r', /^(10|11)$/);
+      await expect(editor.locator('svg script, svg foreignObject, svg a, svg use, svg image, svg animate, svg set, svg [onload], svg [onclick], svg [href], svg [style]')).toHaveCount(0);
+      await expect(editor.locator('svg path')).not.toHaveAttribute('fill');
+      await expect(editor.locator('svg path')).not.toHaveAttribute('stroke-width');
+      expect(await page.evaluate(() => (window as unknown as {attacked:number}).attacked)).toBe(0);
+      expect(requests).toEqual([]);
+    };
+    await input.fill(payload);
+    await check();
+    page.once('dialog', dialog => dialog.accept(payload.replace('r="10"', 'r="11"')));
+    await editor.locator('svg').dblclick();
+    await check();
+    const saved = await input.inputValue();
+    expect(saved).not.toMatch(/foreignObject|<script|<use|<image|<animate|<set|javascript:|onload=|onclick=|https:\/\/example.com/i);
+    await input.fill('Temporary');
+    await input.fill(saved);
+    await check();
+    await editor.locator('p').last().click();
+    await editor.evaluate((element, html) => {
+      const data = new DataTransfer(); data.setData('text/html', html);
+      const event = new ClipboardEvent('paste', {bubbles:true,cancelable:true});
+      Object.defineProperty(event,'clipboardData',{value:data}); element.dispatchEvent(event);
+    }, payload);
+    await expect(editor.locator('svg')).toHaveCount(2);
+    expect(await page.evaluate(() => (window as unknown as {attacked:number}).attacked)).toBe(0);
+    expect(requests).toEqual([]);
+  });
+}
+
+for (const format of ['html', 'markdown']) {
+  test(`inline SVG and local gradient references survive ${format} editing`, async ({ page }) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByRole('combobox', {name:'Format'}).selectOption(format);
+    const input = page.getByRole('textbox', {name:'Content',exact:true});
+    const svg = '<svg viewBox="0 0 24 24"><defs><linearGradient id="gradient"><stop offset="0%" stop-color="red"/><stop offset="100%" stop-color="blue"/></linearGradient></defs><circle cx="12" cy="12" r="10" fill="url(#gradient)"/></svg>';
+    await input.fill(format === 'html' ? `<p>Before ${svg} after</p><p>Tail</p>` : `Before ${svg} after\n\nTail`);
+    const editor = page.locator('.ProseMirror');
+    await expect(editor.locator('p > svg')).toHaveCount(1);
+    await expect(editor.locator('svg linearGradient')).toHaveAttribute('id','gradient');
+    await expect(editor.locator('svg circle')).toHaveAttribute('fill','url(#gradient)');
+    await editor.locator('p').last().click();
+    await page.keyboard.type(' edited');
+    const saved = await input.inputValue();
+    expect(saved).toContain('url(#gradient)');
+    expect(saved).toContain('viewBox="0 0 24 24"');
+    await input.fill('Temporary'); await input.fill(saved);
+    await expect(editor.locator('p > svg')).toHaveCount(1);
+    await expect(editor).toContainText('Before');
+    await expect(editor).toContainText('after');
+  });
+}
+
+for (const format of ['html', 'markdown']) {
+  test(`delayed controlled-value echoes do not discard ${format} typing`, async ({page}) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByRole('combobox', {name:'Format'}).selectOption(format);
+    await page.getByRole('button', {name:'Delay echoes',exact:true}).click();
+    const editor = page.locator('.ProseMirror');
+    await editor.pressSequentially('abcdefghijklmnop', {delay:15});
+    await expect(editor).toHaveText('abcdefghijklmnop');
+    const source = page.getByRole('textbox',{name:'Content',exact:true});
+    await expect(source).toHaveValue(format === 'html' ? '<p>abcdefghijklmnop</p>' : 'abcdefghijklmnop');
+    await page.getByRole('button', {name:'Delay echoes',exact:true}).click();
+    await source.fill('External replacement');
+    await expect(editor).toHaveText('External replacement');
   });
 }

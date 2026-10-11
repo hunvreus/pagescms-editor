@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 import "./typeset.css";
 import SlashCommands from "./slash-command/commands";
 import type {
+  EditorSnippet,
   ImagePickerContext,
   ImagePickerFileResult,
   ImagePickerHandler,
@@ -130,11 +131,13 @@ export type EditorProps = {
   maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
   onPendingUploadsChange?: (count: number) => void;
+  snippets?: readonly EditorSnippet[];
   markdownHtml?: MarkdownHtmlPolicy;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, "onChange" | "className">;
 export type {
+  EditorSnippet,
   ImagePickerContext,
   ImagePickerFileResult,
   ImagePickerHandler,
@@ -318,6 +321,7 @@ export function Editor({
   onRequestImage,
   onPendingUploadsChange,
   markdownHtml,
+  snippets = [],
   className,
   editorClassName,
   ...props
@@ -336,6 +340,9 @@ export function Editor({
   );
   const lastObservedFormatRef = useRef<EditorFormat>(format);
   const lastObservedValueRef = useRef<string>(lastEmittedValueRef.current);
+  const pendingValuesRef = useRef<string[]>([]);
+  const snippetOptionsRef = useRef({ snippets, format, markdownHtml });
+  snippetOptionsRef.current = { snippets, format, markdownHtml };
   const pendingUploadsRef = useRef(0);
   const objectUrlByUploadIdRef = useRef(new Map<string, string>());
   const expectedBlobByUploadIdRef = useRef(new Map<string, string>());
@@ -382,6 +389,15 @@ export function Editor({
       }),
       Markdown.configure({ marked: createMarkdownParser() }),
       SlashCommands.configure({
+        getSnippets: () => snippetOptionsRef.current.snippets,
+        onInsertSnippet: ({ editor: currentEditor, range }, snippet) => {
+          const options = snippetOptionsRef.current;
+          const contentType = snippet.format ?? options.format;
+          const content = contentType === "html"
+            ? sanitizeEditorHtml(snippet.source, options.markdownHtml)
+            : snippet.source;
+          currentEditor.chain().focus().insertContentAt(range, content, { contentType }).run();
+        },
         onRequestImage: enableImages ? (onRequestImage ?? null) : null,
         onInsertLocalImageFile: ({ file, alt, title }) => {
           void insertLocalImageFile(file, "slash", {
@@ -445,6 +461,8 @@ export function Editor({
               .replace(/\sdata-uploading="[^"]*"/g, "")
               .replace(/\sdata-upload-error="[^"]*"/g, "");
       if (nextValue === lastEmittedValueRef.current) return;
+      // A parent may echo an earlier edit after more typing has already happened.
+      pendingValuesRef.current.push(nextValue);
       lastEmittedValueRef.current = nextValue;
       onChange(nextValue);
     },
@@ -494,7 +512,13 @@ export function Editor({
 
     lastObservedFormatRef.current = format;
     lastObservedValueRef.current = externalValue;
+    const pendingIndex = formatChanged ? -1 : pendingValuesRef.current.indexOf(externalValue);
+    if (pendingIndex !== -1) {
+      pendingValuesRef.current.splice(0, pendingIndex + 1);
+      return;
+    }
     if (!formatChanged && externalValue === lastEmittedValueRef.current) return;
+    pendingValuesRef.current = [];
 
     const current = format === "markdown" ? normalizeMarkdown(editor.getMarkdown()) : editor.getHTML();
     const hasChanged = externalValue !== current;
