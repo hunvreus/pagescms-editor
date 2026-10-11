@@ -83,10 +83,9 @@ Notes:
 - `className` applies classes to the root wrapper (`cn-editor`).
 - `editorClassName` applies classes to the WYSIWYG surface only.
 
-## Markdown HTML Policy
+## HTML policy
 
-In Markdown mode, raw HTML is parsed through TipTap by default. Use `markdownHtml`
-to control matching raw HTML fragments by CSS selector:
+`markdownHtml` uses CSS selectors to control HTML in Markdown and HTML modes:
 
 ```tsx
 <Editor
@@ -94,15 +93,52 @@ to control matching raw HTML fragments by CSS selector:
   value={value}
   onChange={setValue}
   markdownHtml={{
-    keep: ["div.callout", "span[data-keep]", "u"],
+    keep: ["div.callout", "details", "summary", "span.badge", "figure"],
     strip: ["div.legacy-wrapper"],
-    drop: ["script", "style", "iframe"],
+    drop: [".discard"],
+    attributes: ["data-kind"],
   }}
 />
 ```
 
-Policy precedence is `drop`, then `strip`, then `keep`, then the default TipTap
-Markdown behavior. Selectors match the root element of the raw HTML fragment.
+- `keep` retains matching supported wrappers. `div`, `section`, `article`, `aside`,
+  `details`, and `summary` contain editable editor content; retained `span` elements
+  are editable marks. Other permitted browser HTML, such as `figure`, is displayed
+  as an atomic fragment; double-click it to edit its HTML.
+- `strip` replaces a matching element and its descendants with plain text, losing
+  nested formatting. Descendants matching `drop` are removed before extracting text.
+- `drop` removes a matching element and its contents.
+- `attributes` permits additional attributes on retained wrappers/fragments, such
+  as `data-kind`. Classes, IDs, and standard link, image, table, list, and details
+  attributes are already permitted. Class preservation keeps every class value;
+  selectors choose elements, not attribute values.
+
+Precedence is `drop`, then `strip`, then `keep`, then normal Tiptap parsing.
+Rules apply to nested elements as well as roots. Scripts, event handlers, inline
+styles, unsafe URLs, frames, active SVG/MathML, and form controls remain forbidden,
+including when explicitly matched by `keep`. HTML source, clipboard input, rendered
+fragments, and edited fragment output are sanitized with DOMPurify. Source mode
+remains a source editor: switching modes alone does not rewrite the stored value;
+policy-filtered output is emitted when editing the visual editor.
+
+In Markdown, retained containers serialize their entire contents as HTML. Markdown
+inside an explicitly kept container is parsed into supported editor content; output
+normalizes that content to HTML. Inline Markdown inside retained spans is supported.
+Whitespace, attribute order, and wrapper boundaries can normalize during editing.
+
+HTML comments and unknown capitalized component syntax such as `<Badge text="New" />`
+are preserved in Markdown as visible, selectable source items. Double-click to edit
+their source. A fragment containing nested comments or components falls back to a
+source item for the whole fragment; its interior is not visually editable. These
+opaque items are source rather than editable HTML, so nested selector rules are not
+applied inside them. Root `strip`/`drop` rules still apply. Source containing unsafe
+browser HTML exports as a code literal. HTML-mode source items serialize as escaped
+code, not executable components. Shortcode/MDX expression parsing, snippets, embeds,
+arbitrary extensions, and custom CSS are outside this implementation.
+
+Selector rules run when content enters the visual editor. Rendering and saving do not apply them again. Prefer class or attribute selectors for stable policies: positional selectors can match different children when filtered content is reopened.
+
+The policy is supplied when mounting the editor. Remount when changing its rules.
 
 ## Image Workflows
 
@@ -177,7 +213,7 @@ export function EditorWithSourceToggle() {
 | `imageFallback` | `"data-url" \| "prompt-url" \| "none"` | `"prompt-url"` | Fallback when no callback inserts an image. |
 | `maxImageBytes` | `number` | `1000000` | Max file size used by `"data-url"` fallback. |
 | `onPendingUploadsChange` | `(count: number) => void` | - | Receives pending optimistic upload count. |
-| `markdownHtml` | `{ keep?: string[]; strip?: string[]; drop?: string[] }` | - | Controls raw HTML fragments in Markdown mode using root-element CSS selectors. |
+| `markdownHtml` | `{ keep?: string[]; strip?: string[]; drop?: string[]; attributes?: string[] }` | - | Controls HTML retention, filtering, and attributes using CSS selectors. |
 | `className` | `string` | - | Extra classes for the root wrapper (`cn-editor`). |
 | `editorClassName` | `string` | - | Extra classes for the WYSIWYG surface. |
 | `...props` | `HTMLAttributes<HTMLDivElement>` | - | Forwarded to the root container. |
@@ -191,3 +227,23 @@ Use Git integration with these settings:
 - Build output directory: `dist`
 
 This deploys the prerendered static HTML + hydrated React demo.
+
+### Keeping registry consumers aligned
+
+Edit `registry/default/editor/html-policy.ts`, then distribute and verify the exact
+module used by the demo and Pages CMS:
+
+```sh
+npm run sync:html-policy -- ../pagescms
+npm run check:html-policy -- ../pagescms
+npm run registry:build
+```
+
+The CMS adapter and media behavior stay outside this module. The sync command does
+not overwrite the CMS editor entry or its local integration changes.
+
+## Browser tests
+
+Install the test browsers with `npx playwright install chromium firefox webkit`, then run `npm test`. The suite runs against Chromium, Firefox, and WebKit. To run one browser, use `npm test -- --project=chromium`.
+
+HTML policy tests cover both HTML and Markdown output, repeated edit/reopen cycles, nested content, selector precedence, attribute filtering, clipboard input, malformed markup, source editing and undo, and malicious HTML. The strict consumer check is `npm run fixture:strict`.

@@ -24,7 +24,9 @@
         "@tiptap/react@3.31.3",
         "@tiptap/starter-kit@3.31.3",
         "@tiptap/suggestion@3.31.3",
-        "tippy.js"
+        "tippy.js",
+        "dompurify",
+        "marked@17.0.6"
       ],
       "files": [
         {
@@ -51,6 +53,11 @@
           "path": "registry/default/editor/slash-command/suggestion.tsx",
           "type": "registry:component",
           "target": "components/ui/editor/slash-command/suggestion.tsx"
+        },
+        {
+          "path": "registry/default/editor/html-policy.ts",
+          "type": "registry:component",
+          "target": "components/ui/editor/html-policy.ts"
         }
       ]
     }

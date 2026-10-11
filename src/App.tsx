@@ -203,6 +203,7 @@ export default function App() {
                 value={markdownValue}
                 onChange={setMarkdownValue}
                 format="markdown"
+                markdownHtml={{ keep: ["div.callout", "details", "summary", "span.badge"], strip: ["div.legacy"], drop: [".discard"] }}
                 enableImages
                 enableImagePasteDrop
                 imageFallback="data-url"
