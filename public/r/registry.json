@@ -26,7 +26,8 @@
         "@tiptap/suggestion@3.31.3",
         "tippy.js",
         "dompurify",
-        "marked@17.0.6"
+        "marked@17.0.6",
+        "@tiptap/extension-paragraph"
       ],
       "files": [
         {
@@ -58,6 +59,11 @@
           "path": "registry/default/editor/html-policy.ts",
           "type": "registry:component",
           "target": "components/ui/editor/html-policy.ts"
+        },
+        {
+          "path": "registry/default/editor/image.ts",
+          "type": "registry:component",
+          "target": "components/ui/editor/image.ts"
         }
       ]
     }

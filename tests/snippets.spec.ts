@@ -48,3 +48,57 @@ for (const format of ["markdown", "html"] as const) {
     expect(await page.evaluate(() => (window as Window & {attack?:number}).attack)).toBeUndefined();
   });
 }
+
+test('slash keyboard navigation keeps offscreen items visible and wheel scrolling reveals snippets', async ({page}) => {
+  await page.goto('/tests/html-policy.html');
+  await page.getByLabel('Snippets').fill(JSON.stringify(Array.from({length:25},(_,index)=>({label:`Snippet ${index}`,source:`<p>Inserted ${index}</p>`}))));
+  await page.getByLabel('Snippets').blur();
+  const editor = page.locator('.ProseMirror');
+  await editor.click(); await page.keyboard.type('/');
+  for (let index=0;index<30;index++) await page.keyboard.press('ArrowDown');
+  const selected = page.locator('button[aria-selected="true"]');
+  await expect(selected).toHaveText('Snippet 20');
+  expect(await selected.evaluate(el=> {const item=el.getBoundingClientRect();const menu=el.parentElement!.getBoundingClientRect();return item.top>=menu.top&&item.bottom<=menu.bottom;})).toBe(true);
+  await page.keyboard.press('Enter'); await expect(editor).toContainText('Inserted 20');
+  await page.getByLabel('Content').fill('');
+  await editor.click(); await page.keyboard.type('/');
+  await page.getByRole('button',{name:'Text',exact:true}).hover();
+  await page.mouse.wheel(0,300);
+  const last=page.getByRole('button',{name:'Snippet 0',exact:true});
+  await expect.poll(()=>last.evaluate(el=>{const item=el.getBoundingClientRect();const menu=el.parentElement!.getBoundingClientRect();return item.top>=menu.top&&item.bottom<=menu.bottom;})).toBe(true);
+  await last.click(); await expect(editor).toContainText('Inserted 0');
+});
+
+for (const format of ['html', 'markdown'] as const) {
+  test(`${format} shared header/footer containers retain editable link attributes`, async ({page}) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByLabel('Format').selectOption(format);
+    await page.getByLabel('Policy').fill(JSON.stringify({keep:['div.alert','div.alert section','div.alert footer','header'],attributes:['data-variant']}));
+    await page.getByLabel('Policy').blur();
+    await page.getByLabel('Content').fill('<header class="intro"><h2>Introduction</h2><a id="intro-link" title="More" href="/intro">Read more</a></header>'+alert);
+    const editor = page.locator('.ProseMirror');
+    await expect(editor.locator('header > h2')).toHaveText('Introduction');
+    await expect(editor.locator('header > p > a')).toHaveAttribute('id','intro-link');
+    await expect(editor.locator('header a')).toHaveAttribute('title','More');
+    const link = editor.locator('footer a');
+    await link.click();
+    await expect.poll(()=>page.evaluate(()=>window.getSelection()?.toString())).toBe('Enable');
+    await page.keyboard.type('Enable now');
+    await expect(link).toHaveText('Enable now');
+    await link.click();
+    await page.getByRole('button',{name:'Link',exact:true}).click();
+    await page.getByPlaceholder('https://example.com').fill('https://example.com/changed');
+    await page.getByRole('button',{name:'Set link',exact:true}).click();
+    await expect(link).toHaveAttribute('href','https://example.com/changed');
+    await expect(link).toHaveAttribute('class','btn');
+    await expect(link).toHaveAttribute('data-variant','outline');
+    const saved = await page.getByLabel('Content').inputValue();
+    await page.getByLabel('Content').fill('Temporary');
+    await page.getByLabel('Content').fill(saved);
+    await expect(editor.locator('header a')).toHaveAttribute('id','intro-link');
+    await expect(editor.locator('footer > p > a.btn')).toHaveText('Enable now');
+    await expect(editor.locator('footer a')).toHaveAttribute('href','https://example.com/changed');
+    await expect(editor.locator('footer a')).toHaveAttribute('data-variant','outline');
+    await expect(editor.locator('div.alert > svg path')).toHaveCount(2);
+  });
+}

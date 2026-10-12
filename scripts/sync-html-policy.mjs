@@ -16,6 +16,14 @@ for (const target of targets) {
     writeFileSync(target, source);
   }
 }
+const image = readFileSync(resolve(root, 'registry/default/editor/image.ts'), 'utf8');
+const imageTargets = [resolve(root, 'src/components/ui/image.ts'), resolve(root, 'public/r/registry/default/editor/image.ts')];
+if (consumer) imageTargets.push(resolve(consumer, 'src/components/ui/editor/image.ts'));
+for (const target of imageTargets) {
+  if (args.includes('--check')) {
+    if (readFileSync(target, 'utf8') !== image) throw new Error(`Editor image extension differs: ${target}`);
+  } else writeFileSync(target, image);
+}
 const editor = readFileSync(resolve(root, 'registry/default/editor/editor.tsx'), 'utf8');
 for (const target of [resolve(root, 'src/components/ui/editor.tsx'), resolve(root, 'public/r/registry/default/editor/editor.tsx')]) {
   if (args.includes('--check')) {

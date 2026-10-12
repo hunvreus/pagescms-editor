@@ -486,7 +486,7 @@ for (const format of ['html', 'markdown']) {
     const editor = page.locator('.ProseMirror');
     await expect(editor.locator('div.alert > h2')).toHaveText('Heads up!');
     await expect(editor.locator('div.alert > section > p')).toHaveText('You can add components and dependencies to your app.');
-    await expect(editor.locator('div.alert > footer > a.btn')).toHaveAttribute('href', '/enable');
+    await expect(editor.locator('div.alert > footer > p > a.btn')).toHaveAttribute('href', '/enable');
     await expect(editor.locator('div.alert > svg')).toHaveCount(1);
     await expect(editor.locator('svg')).toHaveAttribute('viewBox', '0 0 24 24');
     await expect(editor.locator('svg path').first()).toHaveAttribute('d', 'M12 16v-4');
@@ -499,13 +499,13 @@ for (const format of ['html', 'markdown']) {
     await page.keyboard.type(' edited');
     const saved = await input.inputValue();
     expect(saved).toContain('<section><p>You can add components and dependencies to your app.</p></section>');
-    expect(saved).toContain('<footer><a href="/enable" class="btn" data-variant="outline">Enable</a></footer>');
+    expect(saved).toContain('<footer><p><a class="btn" data-variant="outline" href="/enable">Enable</a></p></footer>');
     expect(saved).toContain('<svg');
     await input.fill('Temporary');
     await input.fill(saved);
     await expect(editor.locator('div.alert > h2')).toHaveText('Heads up! edited');
     await expect(editor.locator('div.alert > section > p')).toHaveCount(1);
-    await expect(editor.locator('div.alert > footer > a.btn')).toHaveCount(1);
+    await expect(editor.locator('div.alert > footer > p > a.btn')).toHaveCount(1);
   });
 }
 
@@ -590,5 +590,48 @@ for (const format of ['html', 'markdown']) {
     await page.getByRole('button', {name:'Delay echoes',exact:true}).click();
     await source.fill('External replacement');
     await expect(editor).toHaveText('External replacement');
+  });
+}
+
+for (const format of ['html', 'markdown'] as const) {
+  test(`${format}: atomic HTML links select and source-edit without navigating`, async ({ page }) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByLabel('Format').selectOption(format);
+    const input = page.getByLabel('Content', { exact: true });
+    await input.fill('<figure><a href="/should-not-navigate" target="_blank">Preview link</a></figure><p>Tail</p>');
+    const fragment = page.locator('.ProseMirror figure');
+    await expect(fragment).toBeVisible();
+    const url = page.url();
+    const tabs = page.context().pages().length;
+    await fragment.locator('a').click();
+    await expect(fragment).toHaveClass(/ProseMirror-selectednode/);
+    await fragment.locator('a').click({ modifiers: ['ControlOrMeta'] });
+    await fragment.locator('a').click({ button: 'middle' });
+    expect(page.url()).toBe(url);
+    expect(page.context().pages()).toHaveLength(tabs);
+    page.once('dialog', dialog => dialog.accept('<figure><a href="/changed">Changed link</a></figure>'));
+    await fragment.locator('a').dblclick();
+    await expect(fragment).toContainText('Changed link');
+    await expect(input).toHaveValue(/href="\/changed"/);
+  });
+
+  test(`${format}: ordinary links omit irrelevant defaults and retain configured extras`, async ({ page }) => {
+    await page.goto('/tests/html-policy.html');
+    await page.getByLabel('Format').selectOption(format);
+    const policy = page.getByLabel('Policy');
+    await policy.fill(JSON.stringify({ keep: ['div.callout'], attributes: ['data-kind', 'open'] }));
+    await policy.press('Tab');
+    const input = page.getByLabel('Content', { exact: true });
+    await input.fill('<div class="callout"><p><a href="/destination" id="link-id" colspan="2" open="" data-kind="action">Link</a></p></div>');
+    const link = page.locator('.ProseMirror a');
+    await expect(link).toHaveAttribute('id', 'link-id');
+    await expect(link).toHaveAttribute('data-kind', 'action');
+    await expect(link).toHaveAttribute('open', '');
+    await expect(link).not.toHaveAttribute('colspan');
+    await link.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' edited');
+    await expect(input).toHaveValue(/data-kind="action"/);
+    expect(await input.inputValue()).not.toContain('colspan');
   });
 }

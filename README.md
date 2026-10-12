@@ -104,7 +104,7 @@ Notes:
 - `keep` retains matching supported wrappers. `div`, `section`, `article`, `aside`,
   `details`, and `summary` contain editable editor content; retained `span` elements
   are editable marks. Other permitted browser HTML, such as `figure`, is displayed
-  as an atomic fragment; double-click it to edit its HTML.
+  as an atomic fragment; clicking selects it without following links, and double-clicking edits its HTML.
 - `strip` replaces a matching element and its descendants with plain text, losing
   nested formatting. Descendants matching `drop` are removed before extracting text.
 - `drop` removes a matching element and its contents.
@@ -144,8 +144,10 @@ source item for the whole fragment; its interior is not visually editable. These
 opaque items are source rather than editable HTML, so nested selector rules are not
 applied inside them. Root `strip`/`drop` rules still apply. Source containing unsafe
 browser HTML exports as a code literal. HTML-mode source items serialize as escaped
-code, not executable components. Shortcode/MDX expression parsing, snippets, embeds,
-arbitrary extensions, and custom CSS are outside this implementation.
+code, not executable components. This is not general MDX support: complex expressions
+(such as object-valued props) are not reliably preserved and must stay in source mode.
+Shortcode/MDX expression parsing, embeds, arbitrary extensions, and custom CSS are
+outside this implementation.
 
 Selector rules run when content enters the visual editor. Rendering and saving do not apply them again. Prefer class or attribute selectors for stable policies: positional selectors can match different children when filtered content is reopened.
 
@@ -262,3 +264,11 @@ HTML policy tests cover both HTML and Markdown output, repeated edit/reopen cycl
 ### Snippets
 
 Pass `snippets={[{ label: "Alert", source: '<div class="alert"><h2>Heads up!</h2><section>Your message.</section></div>' }]}` to the editor. Snippets appear in the slash menu and can be searched by label. Their source is parsed, rather than inserted as escaped text, using the field format by default; optional `format: "html" | "markdown"` overrides the input format. Output still uses the editor format. HTML policy and sanitization apply as usual: a snippet does not implicitly keep its wrappers. Insertion replaces the slash query and can be undone. Snippets are unavailable inside table cells.
+
+The slash menu scrolls the selected command into view during keyboard navigation and also supports mouse-wheel scrolling.
+
+Kept `header` and `footer` use the same editable container behavior as `div` and `section`. Direct inline content is normalized into paragraphs; output preserves content and supported attributes, rather than the exact original HTML structure. Editable links retain standard and configured extra attributes through text and URL edits.
+
+Definition lists are visually editable with `html={{ keep: ["dl"] }}`. Their `dt` terms and `dd` descriptions are retained automatically; descriptions accept blocks and nested definition lists, while terms accept inline formatting. Direct description text normalizes into a paragraph. Existing typeset styles cover terms, descriptions, and spacing.
+
+Standalone images support an optional link through the existing Link control. HTML exports `<a><img></a>`; Markdown exports `[![alt](image)](destination)`, or HTML when preserved link-wrapper attributes require it. Image links can be changed or removed without changing the image, and clicks select the image rather than navigate. Destination URLs use the same URI validation as ordinary links.
